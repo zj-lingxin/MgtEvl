@@ -163,5 +163,4 @@ object DateUtils extends scala.Serializable {
     c.set(Calendar.DATE, 1)
     new SimpleDateFormat(formatText).format(c.getTime)
   }
-
 }

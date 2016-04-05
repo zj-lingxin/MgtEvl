@@ -1,7 +1,6 @@
 package com.asto.dmp.mgtevl.util
 
 import com.asto.dmp.mgtevl.base.Constants
-import com.asto.dmp.ycd.base.Constants
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.spark.Logging

@@ -2,7 +2,6 @@ package com.asto.dmp.mgtevl.base
 
 import java.io.FileInputStream
 import java.util.Properties
-import com.asto.dmp.ycd.util.Utils
 import org.apache.spark.Logging
 
 object Props extends Logging {
