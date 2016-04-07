@@ -34,7 +34,7 @@ object Contexts extends Logging {
   }
 
   def initSparkContext(master: String = null): SparkContext = {
-    val conf = new SparkConf().setAppName(Constants.App.NAME)
+    val conf = new SparkConf().setAppName(Constants.APP_NAME)
     val masterInCodes = Option(master)
     val masterInSparkConf = conf.getOption("spark.master")
 

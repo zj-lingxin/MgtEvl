@@ -6,7 +6,7 @@ import com.asto.dmp.mgtevl.util.DateUtils
 import scala.util.parsing.json.{JSONArray, JSONObject}
 
 object MsgWrapper {
-  def getJson(quotaItemName: String, msgList: List[Msg], propertyUuid: String = Constants.App.STORE_ID): String = {
+  def getJson(quotaItemName: String, msgList: List[Msg], propertyUuid: String): String = {
     new JSONObject(Map(
       "quotaItemName" -> quotaItemName,
       "propertyUuid" -> propertyUuid,
@@ -14,9 +14,9 @@ object MsgWrapper {
     )).toString()
   }
 
-  def getJson(quotaItemName: String, msgs: Msg *): String = {
-    getJson(quotaItemName: String, msgs.toList)
-  }
+ /* def getJson(quotaItemName: String, msgs: Msg *): String = {
+    //getJson(quotaItemName: String, msgs.toList)
+  }*/
 
   def matchMsgType(msg: Msg) = {
     msg match {
@@ -43,11 +43,11 @@ object Msg {
   def strMsgsOfAStore(quotaItemName: String, propertyUuid: String, msgs: List[Msg]): String = {
     val buffer = new StringBuffer()
     for (msg <- msgs) {
-      buffer.append(s"$quotaItemName${Constants.OutputPath.SEPARATOR}")
-      buffer.append(s"${propertyUuid}${Constants.OutputPath.SEPARATOR}")
-      buffer.append(s"${msg.quotaCode}${Constants.OutputPath.SEPARATOR}")
-      buffer.append(s"${msg.indexFlag}${Constants.OutputPath.SEPARATOR}")
-      buffer.append(s"${msg.targetTime}${Constants.OutputPath.SEPARATOR}")
+      buffer.append(s"$quotaItemName${Constants.OUTPUT_SEPARATOR }")
+      buffer.append(s"$propertyUuid${Constants.OUTPUT_SEPARATOR }")
+      buffer.append(s"${msg.quotaCode}${Constants.OUTPUT_SEPARATOR }")
+      buffer.append(s"${msg.indexFlag}${Constants.OUTPUT_SEPARATOR }")
+      buffer.append(s"${msg.targetTime}${Constants.OUTPUT_SEPARATOR }")
       buffer.append(s"${msg.quotaValue}\n")
     }
     buffer.toString
@@ -63,12 +63,12 @@ object MsgWithName {
   def strMsgsOfAStore(quotaItemName: String, propertyUuid: String, msgs: List[MsgWithName]) = {
     val buffer = new StringBuffer()
     for (msg <- msgs) {
-      buffer.append(s"$propertyUuid${Constants.OutputPath.SEPARATOR}")
-      buffer.append(s"$quotaItemName${Constants.OutputPath.SEPARATOR}")
-      buffer.append(s"${msg.quotaCode}${Constants.OutputPath.SEPARATOR}")
-      buffer.append(s"${msg.quotaName}${Constants.OutputPath.SEPARATOR}")
-      buffer.append(s"${msg.indexFlag}${Constants.OutputPath.SEPARATOR}")
-      buffer.append(s"${msg.targetTime}${Constants.OutputPath.SEPARATOR}")
+      buffer.append(s"$propertyUuid${Constants.OUTPUT_SEPARATOR }")
+      buffer.append(s"$quotaItemName${Constants.OUTPUT_SEPARATOR }")
+      buffer.append(s"${msg.quotaCode}${Constants.OUTPUT_SEPARATOR }")
+      buffer.append(s"${msg.quotaName}${Constants.OUTPUT_SEPARATOR }")
+      buffer.append(s"${msg.indexFlag}${Constants.OUTPUT_SEPARATOR }")
+      buffer.append(s"${msg.targetTime}${Constants.OUTPUT_SEPARATOR }")
       buffer.append(s"${msg.quotaValue}\n")
     }
     buffer.toString

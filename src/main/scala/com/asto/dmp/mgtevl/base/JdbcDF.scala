@@ -2,9 +2,6 @@ package com.asto.dmp.mgtevl.base
 
 import org.apache.spark.sql.DataFrame
 
-/**
- * Created by lingx on 2016/04/05.
- */
 object JdbcDF {
   def load(dbtable: String): DataFrame = {
     Contexts.sqlContext.read.format("jdbc").options(Map(

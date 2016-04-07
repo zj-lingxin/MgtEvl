@@ -24,11 +24,6 @@ object DateUtils extends scala.Serializable {
 
   def calendarToStr(calendar: Calendar, formatText: String = "yyyy-MM-dd") = getStrDate(calendar, formatText)
 
-  /**
-   * 获取当前系统日期。
-   * 格式是"yyyy-MM-dd HH:mm:ss"
-   */
-  def getStrDate: String = getStrDate("yyyy-MM-dd")
 
   /**
    * 倒推出m天之前的日期，并以formatText格式以字符串形式输出

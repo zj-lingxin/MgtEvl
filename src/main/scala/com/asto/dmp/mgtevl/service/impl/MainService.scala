@@ -1,12 +1,52 @@
 package com.asto.dmp.mgtevl.service.impl
 
-import com.asto.dmp.mgtevl.service.impl.MainService._
-import com.asto.dmp.mgtevl.base.JdbcDF
+import com.asto.dmp.mgtevl.base.{Paths, Constants, JdbcDF}
 import com.asto.dmp.mgtevl.service.Service
-import com.asto.dmp.mgtevl.util.{Utils, DateUtils}
+import com.asto.dmp.mgtevl.util.{FileUtils, Utils, DateUtils}
 import org.apache.spark.rdd.RDD
 
 class MainService extends Service {
+
+  private val metricDF = {
+    var sql = "select x.property_uuid, x.target_time, x.metric_dim_code, x.metric_value from xdgc.property_metric x where metric_dim_code in ('M_SALE_AMOUNT','M_DEAL_CUST_CNT','M_CUST_ONE_PRICE','M_REFUND_RATE','M_TOP3_GOODS_REVENUE','M_TOP10_CUST_REVENUE') "
+    if (Constants.IS_ONLINE) {
+      sql += s" and x.property_uuid = '${Constants.PROPERTY_UUID}'"
+    }
+    JdbcDF.load(s"($sql) tmp")
+  }
+  //统计近n个月的数据
+  private val n = 6
+  private val (startDate, endDate) = (DateUtils.monthsAgo(n, "yyyyMM"), DateUtils.monthsAgo(1, "yyyyMM"))
+  private val (startDateBackOneYear, endDateBackOneYear) = (DateUtils.monthsAgo(n + 12, "yyyyMM"), DateUtils.monthsAgo(13, "yyyyMM"))
+
+  private def getLastNMonthInfoBy[T](metricCode: String, f: String => T, startTime: String = startDate, endTime: String = endDate): RDD[(String, String, T)] = {
+    metricDF.select("property_uuid", "target_time", "metric_value", "metric_dim_code")
+      .filter(s"metric_dim_code = '$metricCode' and target_time >= '$startTime' and target_time <= '$endTime'")
+      .map(a => (a(0).toString, a(1).toString, f(a(2).toString))).distinct()
+  }
+
+  //近n个月的交易额
+  private val saleAmount = getLastNMonthInfoBy("M_SALE_AMOUNT", v => v.toDouble).persist()
+
+  private val saleAmountBackOneYear = getLastNMonthInfoBy("M_SALE_AMOUNT", v => v.toDouble, startDateBackOneYear, endDateBackOneYear)
+
+  private val saleAmountTotal = saleAmount.map(t => (t._1, t._3)).reduceByKey(_ + _).persist()
+
+  //近n个月的交易笔数(包含非有效交易笔数)
+  private val dealCustCnt = getLastNMonthInfoBy("M_DEAL_CUST_CNT", v => v.toInt)
+
+  //近n个月的客单价
+  private val custOnePrice = getLastNMonthInfoBy("M_CUST_ONE_PRICE", v => v.toDouble)
+
+  //近n个月的退款率
+  private val refundRate = getLastNMonthInfoBy("M_REFUND_RATE", v => v.replaceAll("%", "").toDouble)
+
+  //近n个月的top3的商品销售额
+  private val top3GoodsRevenue = getLastNMonthInfoBy("M_TOP3_GOODS_REVENUE", v => v.toDouble)
+
+  //近n个月的top10客户销售额
+  private val top10CustRevenue = getLastNMonthInfoBy("M_TOP10_CUST_REVENUE", v => v.toDouble)
+
   //每个月的销售额增长倍数
   private val growthMultiples = getGrowthMultiplesEveryMonths
 
@@ -259,7 +299,7 @@ class MainService extends Service {
     }
   }
 
-  def getScores(quotas: RDD[(String, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any)]) = {
+  def getQuotaScores(quotas: RDD[(String, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any)]) = {
     def retainNone[T <: Any](v: Any, f: T => Any) = {
       v match {
         case _: Double => f(v.toString.toDouble.asInstanceOf[T])
@@ -280,7 +320,35 @@ class MainService extends Service {
       retainNone(t._11, increaseMonthNumScore)
       ))
   }
-  
+
+  /**
+   * 计算最终得分。以下是各个指标的权重：
+   * 近n个月月均交易额	25%
+   * 近n个月月均有效交易笔数	10%
+   * 近n个月退款率	10%
+   * 近n个月交易额变异系数	5.0%
+   * 近n个月客单价变异系数	10%
+   * 近n个月交易金额前三商品的金额占比	10%
+   * 近n个月交易金额前十客户的金额占比	10%
+   * 同期交易增长率	5.0%
+   * 近n个月交易增长倍数	7.5%
+   * 近n个月交易上涨的月份数（环比上涨10%）	7.5%
+   */
+  def getFinalScore(quotaScores: RDD[(String, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any)]) = {
+    //将None的得分改为0
+    def scoreWeightHandle[T <: Any](v: T, weight: Double): (Double, Double) = {
+      v match {
+        case _: Int => (v.toString.toInt * weight, weight)
+        case _ => (0D, 0D)
+      }
+    }
+    def getFinalScore(scoresWeight: Array[(Any, Double)]) = {
+      val totalScoreWeight = scoresWeight.map(s => scoreWeightHandle(s._1, s._2)).reduce((a, b) => (a._1 + b._1, a._2 + b._2))
+      Math.round(totalScoreWeight._1 / totalScoreWeight._2 * 10)
+    }
+    quotaScores.map(t => (t._1, getFinalScore(Array((t._2, 0.25), (t._3, 0.1), (t._4, 0.1), (t._5, 0.05), (t._6, 0.1), (t._7, 0.1), (t._8, 0.1), (t._9, 0.05), (t._10, 0.075), (t._11, 0.075)))))
+  }
+
   def getAllQuotas = {
     import com.asto.dmp.mgtevl.util.RichPairRDD._
     getAvgSaleAmount.cogroup(getDealCustCnt, getRefundRate, getSaleAmountCV, getCustOnePriceCV, getTop3GoodsRevenueRate, getgrowthRate, getGrowthRate, getSalesAmountGrowthMultiples, getSaleAmountIncreaseMonthNum)
@@ -290,48 +358,15 @@ class MainService extends Service {
   }
 
   override private[service] def runServices(): Unit = {
+    val path = new Paths()
+
     val quotas = getAllQuotas
-    val scores = getScores(quotas).foreach(println)
+    val quotaScores = getQuotaScores(quotas)
+    val finalScores = getFinalScore(quotaScores)
+
+    FileUtils.saveFileToHDFS(path.quotasPath, quotas)
+    FileUtils.saveFileToHDFS(path.quotaScoresPath, quotaScores)
+    FileUtils.saveFileToHDFS(path.finalScoresPath, finalScores)
   }
 }
-
-object MainService {
-  val metricDF = JdbcDF.load("xdgc.property_metric")
-  //统计近n个月的数据
-  val n = 6
-  val (startDate, endDate) = (DateUtils.monthsAgo(n, "yyyyMM"), DateUtils.monthsAgo(1, "yyyyMM"))
-  val (startDateBackOneYear, endDateBackOneYear) = (DateUtils.monthsAgo(n + 12, "yyyyMM"), DateUtils.monthsAgo(13, "yyyyMM"))
-
-  private def getLastNMonthInfoBy[T](metricCode: String, f: String => T, startTime: String = startDate, endTime: String = endDate): RDD[(String, String, T)] = {
-    metricDF.select("property_uuid", "target_time", "metric_value", "metric_dim_code")
-      .filter(s"metric_dim_code = '$metricCode' and target_time >= '$startTime' and target_time <= '$endTime'")
-      .map(a => (a(0).toString, a(1).toString, f(a(2).toString))).distinct()
-  }
-
-  //近n个月的交易额
-  val saleAmount = getLastNMonthInfoBy("M_SALE_AMOUNT", v => v.toDouble).persist()
-
-  val saleAmountBackOneYear = getLastNMonthInfoBy("M_SALE_AMOUNT", v => v.toDouble, startDateBackOneYear, endDateBackOneYear)
-
-  val saleAmountTotal = saleAmount.map(t => (t._1, t._3)).reduceByKey(_ + _).persist()
-
-  //近n个月的交易笔数(包含非有效交易笔数)
-  val dealCustCnt = getLastNMonthInfoBy("M_DEAL_CUST_CNT", v => v.toInt)
-
-  //近n个月的客单价
-  val custOnePrice = getLastNMonthInfoBy("M_CUST_ONE_PRICE", v => v.toDouble)
-
-  //近n个月的退款率
-  val refundRate = getLastNMonthInfoBy("M_REFUND_RATE", v => v.replaceAll("%", "").toDouble)
-
-  //近n个月的top3的商品销售额
-  val top3GoodsRevenue = getLastNMonthInfoBy("M_TOP3_GOODS_REVENUE", v => v.toDouble)
-
-  //近n个月的top10客户销售额
-  val top10CustRevenue = getLastNMonthInfoBy("M_TOP10_CUST_REVENUE", v => v.toDouble)
-
-}
-
-
-
 
